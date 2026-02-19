@@ -2,11 +2,10 @@
 // WindLift - Odoo Puantaj Excel Parser
 // lib/odoo-parser.ts
 // ============================================
-// npm install xlsx  →  gerekli bağımlılık
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as XLSX from 'xlsx'
 
-// ── İş Tipi Çeviri Tablosu ──────────────────
 export const WORK_TYPE_LABELS: Record<string, string> = {
   'A-OFFLOADING (İNDİRME)': 'İndirme / Boşaltma',
   'B-PREPERATION (HAZIRLIK)': 'Hazırlık',
@@ -30,15 +29,13 @@ export const WORK_TYPE_LABELS: Record<string, string> = {
 
 function getWorkTypeCode(raw: string): string {
   if (!raw) return ''
-  const first = raw.split('-')[0].trim().toUpperCase()
-  return first
+  return raw.split('-')[0].trim().toUpperCase()
 }
 
 function getWorkTypeLabel(raw: string): string {
   return WORK_TYPE_LABELS[raw] || raw || ''
 }
 
-// ── Odoo Puantaj Türü → WindLift entry_type ──
 export const ENTRY_TYPE_MAP: Record<string, string> = {
   'ŞEHİRDIŞI': 'on_site',
   'ŞEHİRDIŞI GİDİŞ': 'travel',
@@ -67,14 +64,22 @@ export const ENTRY_TYPE_LABELS: Record<string, string> = {
   office: 'Ofiste',
 }
 
-// ── Tip Tanımları ─────────────────────────
+export interface ParsedLine {
+  lineNo: number
+  workTypeRaw: string
+  workTypeCode: string
+  workTypeLabel: string
+  turbineRaw: string
+  hours: number
+}
+
 export interface ParsedRow {
   employeeCode: string
   fullName: string
   department: string
-  workDate: string           // ISO date: 2026-01-02
-  entryTypeRaw: string       // ŞEHİRDIŞI
-  entryType: string          // on_site
+  workDate: string
+  entryTypeRaw: string
+  entryType: string
   totalHours: number
   startTime: number | null
   endTime: number | null
@@ -90,25 +95,6 @@ export interface ParsedRow {
   lines: ParsedLine[]
 }
 
-export interface ParsedLine {
-  lineNo: number
-  workTypeRaw: string
-  workTypeCode: string
-  workTypeLabel: string
-  turbineRaw: string   // T1, T7, * veya ''
-  hours: number
-}
-
-export interface ParseResult {
-  rows: ParsedRow[]
-  uniquePersonnel: PersonnelSummary[]
-  uniqueProjects: ProjectSummary[]
-  dateRange: { start: string; end: string }
-  totalRows: number
-  skippedRows: number
-  warnings: string[]
-}
-
 export interface PersonnelSummary {
   employeeCode: string
   fullName: string
@@ -122,40 +108,41 @@ export interface ProjectSummary {
   personnelCount: number
 }
 
-// ── Ana Parser Fonksiyonu ─────────────────
+export interface ParseResult {
+  rows: ParsedRow[]
+  uniquePersonnel: PersonnelSummary[]
+  uniqueProjects: ProjectSummary[]
+  dateRange: { start: string; end: string }
+  totalRows: number
+  skippedRows: number
+  warnings: string[]
+}
+
 export function parseOdooExcel(buffer: ArrayBuffer): ParseResult {
   const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
   const ws = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
-    header: 1,
-    defval: null,
-  }) as unknown[][]
+  // Parse as array-of-arrays using unknown to avoid cast conflicts
+  const rawData: unknown = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
+  const raw: any[][] = rawData as any[][]
 
-  if (raw.length < 2) {
+  if (!raw || raw.length < 2) {
     return {
       rows: [], uniquePersonnel: [], uniqueProjects: [],
       dateRange: { start: '', end: '' },
-      totalRows: 0, skippedRows: 0, warnings: ['Dosya boş veya geçersiz format.'],
+      totalRows: 0, skippedRows: 0,
+      warnings: ['Dosya boş veya geçersiz format.'],
     }
   }
 
-  // Kolon başlıklarını bul (ilk satır)
-  const headers = (raw[0] as string[]).map((h) => (h || '').toString().trim())
-
+  const headers: string[] = (raw[0] as any[]).map((h: any) => String(h ?? '').trim())
   const col = (name: string) => headers.indexOf(name)
 
-  // Kritik kolonları kontrol et
   const warnings: string[] = []
-  const requiredCols = ['Sicil No', 'Personel', 'Tarih', 'Puantaj Kaydı Türü']
-  for (const c of requiredCols) {
+  for (const c of ['Sicil No', 'Personel', 'Tarih', 'Puantaj Kaydı Türü']) {
     if (col(c) === -1) warnings.push(`Kritik kolon bulunamadı: "${c}"`)
   }
-  if (warnings.length > 0) {
-    return {
-      rows: [], uniquePersonnel: [], uniqueProjects: [],
-      dateRange: { start: '', end: '' },
-      totalRows: 0, skippedRows: 0, warnings,
-    }
+  if (warnings.length > 0 && col('Sicil No') === -1) {
+    return { rows: [], uniquePersonnel: [], uniqueProjects: [], dateRange: { start: '', end: '' }, totalRows: 0, skippedRows: 0, warnings }
   }
 
   const rows: ParsedRow[] = []
@@ -165,19 +152,13 @@ export function parseOdooExcel(buffer: ArrayBuffer): ParseResult {
   const dates: Date[] = []
 
   for (let i = 1; i < raw.length; i++) {
-    const r = raw[i] as unknown[]
+    const r: any[] = raw[i] as any[]
+    const employeeCode = String(r[col('Sicil No')] ?? '').trim()
+    const fullName = String(r[col('Personel')] ?? '').trim()
+    const entryTypeRaw = String(r[col('Puantaj Kaydı Türü')] ?? '').trim()
 
-    const employeeCode = (r[col('Sicil No')] ?? '').toString().trim()
-    const fullName = (r[col('Personel')] ?? '').toString().trim()
-    const entryTypeRaw = (r[col('Puantaj Kaydı Türü')] ?? '').toString().trim()
+    if (!employeeCode || !fullName || !entryTypeRaw) { skippedRows++; continue }
 
-    // Zorunlu alan kontrolü
-    if (!employeeCode || !fullName || !entryTypeRaw) {
-      skippedRows++
-      continue
-    }
-
-    // Tarih parse
     let workDate = ''
     const rawDate = r[col('Tarih')]
     if (rawDate instanceof Date) {
@@ -185,43 +166,37 @@ export function parseOdooExcel(buffer: ArrayBuffer): ParseResult {
       dates.push(rawDate)
     } else if (typeof rawDate === 'string') {
       workDate = rawDate.split('T')[0]
-    } else if (rawDate) {
-      // Excel serial date
-      const d = XLSX.SSF.parse_date_code(rawDate as number)
-      if (d) {
-        workDate = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
-        dates.push(new Date(workDate))
-      }
+    } else if (rawDate != null) {
+      try {
+        const d = XLSX.SSF.parse_date_code(Number(rawDate))
+        if (d) {
+          workDate = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+          dates.push(new Date(workDate))
+        }
+      } catch { /* skip */ }
     }
-
-    if (!workDate) {
-      skippedRows++
-      continue
-    }
+    if (!workDate) { skippedRows++; continue }
 
     const entryType = ENTRY_TYPE_MAP[entryTypeRaw] || 'day_off'
-    const totalHours = parseFloat((r[col('Süre')] ?? 0).toString()) || 0
-    const startTime = r[col('Başlangıç Saati')] != null
-      ? parseFloat(r[col('Başlangıç Saati')]!.toString())
-      : null
-    const endTime = r[col('Bitiş Saati')] != null
-      ? parseFloat(r[col('Bitiş Saati')]!.toString())
-      : null
+    const totalHours = parseFloat(String(r[col('Süre')] ?? 0)) || 0
+    const startRaw = r[col('Başlangıç Saati')]
+    const endRaw = r[col('Bitiş Saati')]
+    const startTime = startRaw != null ? parseFloat(String(startRaw)) : null
+    const endTime = endRaw != null ? parseFloat(String(endRaw)) : null
 
-    const odooProjectCode = (r[col('Proje Kodu')] ?? '').toString().trim()
-    const odooProjectName = (r[col('Proje')] ?? '').toString().trim()
-    const odooActivityCode = (r[col('Aktivite')] ?? '').toString().trim()
-    const notes = (r[col('Yapılan İş')] ?? '').toString().trim()
-    const department = (r[col('Department')] ?? '').toString().trim()
-    const odooStatus = (r[col('Durum')] ?? '').toString().trim()
+    const odooProjectCode = String(r[col('Proje Kodu')] ?? '').trim()
+    const odooProjectName = String(r[col('Proje')] ?? '').trim()
+    const odooActivityCode = String(r[col('Aktivite')] ?? '').trim()
+    const notes = String(r[col('Yapılan İş')] ?? '').trim()
+    const department = String(r[col('Department')] ?? '').trim()
+    const odooStatus = String(r[col('Durum')] ?? '').trim()
 
-    const mealBreakfast = r[col('Kahvaltı')] === true || r[col('Kahvaltı')] === 1
-    const mealLunch = r[col('Öğle Yemeği')] === true || r[col('Öğle Yemeği')] === 1
-    const mealDinner = r[col('Akşam Yemeği')] === true || r[col('Akşam Yemeği')] === 1
-    const mealNight = r[col('Gece Yemeği')] === true || r[col('Gece Yemeği')] === 1
+    const isTruthy = (v: any) => v === true || v === 1 || v === '1' || v === 'True'
+    const mealBreakfast = isTruthy(r[col('Kahvaltı')])
+    const mealLunch = isTruthy(r[col('Öğle Yemeği')])
+    const mealDinner = isTruthy(r[col('Akşam Yemeği')])
+    const mealNight = isTruthy(r[col('Gece Yemeği')])
 
-    // İş satırlarını parse et (Odoo'da 4 slot var)
-    const lines: ParsedLine[] = []
     const slotDefs = [
       { typeCol: 'Res Montaj Tipi1', turbineCol: 'Tirbun No1', hourCol: 'RM Saat1' },
       { typeCol: 'Res Montaj Tipi2', turbineCol: 'Tirbun No2', hourCol: 'RM Saat2' },
@@ -229,14 +204,13 @@ export function parseOdooExcel(buffer: ArrayBuffer): ParseResult {
       { typeCol: 'Res Montaj Tipi4', turbineCol: 'Tirbun No4', hourCol: 'RM Saat4' },
     ]
 
+    const lines: ParsedLine[] = []
     for (let lineNo = 0; lineNo < 4; lineNo++) {
       const s = slotDefs[lineNo]
-      const workTypeRaw = (r[col(s.typeCol)] ?? '').toString().trim()
-      const turbineRaw = (r[col(s.turbineCol)] ?? '').toString().trim()
-      const hours = parseFloat((r[col(s.hourCol)] ?? 0).toString()) || 0
-
-      // Boş veya PROJE ARASI / DAY OFF satırları ekle ama filtrele
-      if (workTypeRaw && workTypeRaw !== '') {
+      const workTypeRaw = String(r[col(s.typeCol)] ?? '').trim()
+      const turbineRaw = String(r[col(s.turbineCol)] ?? '').trim()
+      const hours = parseFloat(String(r[col(s.hourCol)] ?? 0)) || 0
+      if (workTypeRaw) {
         lines.push({
           lineNo: lineNo + 1,
           workTypeRaw,
@@ -249,53 +223,25 @@ export function parseOdooExcel(buffer: ArrayBuffer): ParseResult {
     }
 
     rows.push({
-      employeeCode,
-      fullName,
-      department,
-      workDate,
-      entryTypeRaw,
-      entryType,
-      totalHours,
-      startTime,
-      endTime,
-      odooProjectCode,
-      odooProjectName,
-      odooActivityCode,
-      notes,
-      mealBreakfast,
-      mealLunch,
-      mealDinner,
-      mealNight,
-      odooStatus,
-      lines,
+      employeeCode, fullName, department, workDate,
+      entryTypeRaw, entryType, totalHours, startTime, endTime,
+      odooProjectCode, odooProjectName, odooActivityCode,
+      notes, mealBreakfast, mealLunch, mealDinner, mealNight,
+      odooStatus, lines,
     })
 
-    // Personel özeti
     if (!personnelMap.has(employeeCode)) {
-      personnelMap.set(employeeCode, {
-        employeeCode,
-        fullName,
-        department,
-        entryCount: 0,
-      })
+      personnelMap.set(employeeCode, { employeeCode, fullName, department, entryCount: 0 })
     }
     personnelMap.get(employeeCode)!.entryCount++
 
-    // Proje özeti
     if (odooProjectCode && !projectMap.has(odooProjectCode)) {
-      projectMap.set(odooProjectCode, {
-        odooCode: odooProjectCode,
-        odooName: odooProjectName,
-        personnelCount: 0,
-      })
+      projectMap.set(odooProjectCode, { odooCode: odooProjectCode, odooName: odooProjectName, personnelCount: 0 })
     }
-    if (odooProjectCode) {
-      projectMap.get(odooProjectCode)!.personnelCount++
-    }
+    if (odooProjectCode) projectMap.get(odooProjectCode)!.personnelCount++
   }
 
-  const sortedDates = dates.sort((a, b) => a.getTime() - b.getTime())
-
+  const sortedDates = dates.slice().sort((a, b) => a.getTime() - b.getTime())
   return {
     rows,
     uniquePersonnel: Array.from(personnelMap.values()),

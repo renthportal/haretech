@@ -8,19 +8,19 @@ import {
   Search,
   Upload,
   MapPin,
-  Calendar,
   Clock,
   ChevronRight,
   RefreshCw,
+  Calendar,
 } from 'lucide-react'
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/ui/loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ENTRY_TYPE_LABELS } from '@/lib/odoo-parser'
-import { formatDate } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
-// ── Tipler ─────────────────────────────────
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 interface PersonnelWithStats {
   id: string
   employee_code: string
@@ -33,7 +33,6 @@ interface PersonnelWithStats {
   today_entry_type?: string | null
   today_hours?: number | null
   today_work_types?: string | null
-  last_work_date?: string | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -54,7 +53,6 @@ const STATUS_LABELS: Record<string, string> = {
   training: 'Eğitimde',
 }
 
-// ── Sayfa ───────────────────────────────────
 export default function PersonnelPage() {
   const { profile } = useProfile()
   const [personnel, setPersonnel] = useState<PersonnelWithStats[]>([])
@@ -64,68 +62,51 @@ export default function PersonnelPage() {
   const [projectFilter, setProjectFilter] = useState('all')
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
   const supabase = createClient()
-
   const today = new Date().toISOString().split('T')[0]
 
   const fetchPersonnel = useCallback(async () => {
     setLoading(true)
     try {
-      // Personel + bugünkü iş durumu (JOIN ile)
       const { data, error } = await supabase
         .from('personnel')
-        .select(`
-          id,
-          employee_code,
-          full_name,
-          department,
-          role_title,
-          status,
-          current_project_id,
-          projects:current_project_id(name)
-        `)
+        .select('id, employee_code, full_name, department, role_title, status, current_project_id, projects:current_project_id(name)')
         .eq('is_active', true)
         .order('full_name')
 
       if (error) throw error
 
-      // Bugünkü work_entries'i ayrıca çek
       const { data: todayEntries } = await supabase
         .from('work_entries')
-        .select(`
-          personnel_id,
-          entry_type,
-          total_hours,
-          work_entry_lines(work_type_label, hours)
-        `)
+        .select('personnel_id, entry_type, total_hours, work_entry_lines(work_type_label, hours)')
         .eq('work_date', today)
 
-      // Map: personnel_id → today entry
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const todayMap = new Map<string, any>()
       if (todayEntries) {
         for (const e of todayEntries) {
-          todayMap.set(e.personnel_id, e)
+          todayMap.set(String(e.personnel_id), e)
         }
       }
 
-      const enriched: PersonnelWithStats[] = (data || []).map((p) => {
-        const te = todayMap.get(p.id)
-        const workTypes = te
-          ? (te.work_entry_lines || [])
-              .filter((l: { work_type_label: string; hours: number }) => l.hours > 0 && l.work_type_label && !['Proje Arası', 'İzin Günü'].includes(l.work_type_label))
-              .map((l: { work_type_label: string; hours: number }) => `${l.work_type_label} (${l.hours}s)`)
-              .join(', ')
-          : null
+      const enriched: PersonnelWithStats[] = (data || []).map((p: any) => {
+        const te = todayMap.get(String(p.id))
+        const lines: any[] = te?.work_entry_lines || []
+        const workTypes = lines
+          .filter((l: any) => l.hours > 0 && l.work_type_label && !['Proje Arası', 'İzin Günü'].includes(l.work_type_label))
+          .map((l: any) => `${l.work_type_label} (${l.hours}s)`)
+          .join(', ') || null
+
+        const projArr: any[] = p.projects
+        const projectName = Array.isArray(projArr) ? projArr[0]?.name ?? null : null
 
         return {
-          id: p.id,
-          employee_code: p.employee_code,
-          full_name: p.full_name,
-          department: p.department,
-          role_title: p.role_title,
-          status: p.status,
-          current_project_id: p.current_project_id,
-          project_name: (Array.isArray(p.projects) ? p.projects[0]?.name : (p.projects as { name: string } | null)?.name) ?? null,
+          id: String(p.id),
+          employee_code: String(p.employee_code),
+          full_name: String(p.full_name),
+          department: p.department ?? null,
+          role_title: p.role_title ?? null,
+          status: String(p.status || 'available'),
+          current_project_id: p.current_project_id ?? null,
+          project_name: projectName,
           today_entry_type: te?.entry_type ?? null,
           today_hours: te?.total_hours ?? null,
           today_work_types: workTypes,
@@ -143,13 +124,11 @@ export default function PersonnelPage() {
 
   useEffect(() => {
     fetchPersonnel()
-    // Projeleri çek (filtre için)
     supabase.from('projects').select('id, name').order('name').then(({ data }) => {
       setProjects(data || [])
     })
   }, [fetchPersonnel, supabase])
 
-  // ── İstatistikler ──
   const stats = {
     total: personnel.length,
     onSite: personnel.filter((p) => p.status === 'on_site').length,
@@ -158,18 +137,15 @@ export default function PersonnelPage() {
     leave: personnel.filter((p) => ['leave', 'annual_leave', 'sick_leave'].includes(p.status)).length,
   }
 
-  // ── Filtrele ──
   const filtered = personnel.filter((p) => {
     const q = search.toLowerCase()
-    const matchSearch =
-      !q ||
+    const matchSearch = !q ||
       p.full_name.toLowerCase().includes(q) ||
       p.employee_code.includes(q) ||
       (p.role_title?.toLowerCase() ?? '').includes(q) ||
       (p.project_name?.toLowerCase() ?? '').includes(q)
     const matchStatus = statusFilter === 'all' || p.status === statusFilter
-    const matchProject =
-      projectFilter === 'all' || p.current_project_id === projectFilter
+    const matchProject = projectFilter === 'all' || p.current_project_id === projectFilter
     return matchSearch && matchStatus && matchProject
   })
 
@@ -177,22 +153,15 @@ export default function PersonnelPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Personel</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {new Date().toLocaleDateString('tr-TR', {
-              weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-            })} itibarıyla saha kadrosu
+            {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} itibarıyla saha kadrosu
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={fetchPersonnel}
-            className="btn-ghost"
-            title="Yenile"
-          >
+          <button onClick={fetchPersonnel} className="btn-ghost" title="Yenile">
             <RefreshCw className="h-4 w-4" />
           </button>
           {canImport && (
@@ -204,7 +173,6 @@ export default function PersonnelPage() {
         </div>
       </div>
 
-      {/* KPI Kartları */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <KPICard label="Toplam" value={stats.total} color="text-white" bg="bg-surface-light" />
         <KPICard label="Sahada" value={stats.onSite} color="text-wind-400" bg="bg-wind-700/20" />
@@ -213,71 +181,41 @@ export default function PersonnelPage() {
         <KPICard label="İzinde" value={stats.leave} color="text-gray-400" bg="bg-surface-light" />
       </div>
 
-      {/* Filtreler */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input-field pl-10"
-            placeholder="İsim, sicil, rol ara..."
-          />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            className="input-field pl-10" placeholder="İsim, sicil, rol ara..." />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="input-field w-auto"
-        >
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field w-auto">
           <option value="all">Tüm Durumlar</option>
-          {Object.entries(STATUS_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
-          ))}
+          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <select
-          value={projectFilter}
-          onChange={(e) => setProjectFilter(e.target.value)}
-          className="input-field w-auto"
-        >
+        <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="input-field w-auto">
           <option value="all">Tüm Projeler</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         {(search || statusFilter !== 'all' || projectFilter !== 'all') && (
-          <button
-            onClick={() => { setSearch(''); setStatusFilter('all'); setProjectFilter('all') }}
-            className="text-xs text-gray-400 hover:text-gray-200"
-          >
-            Temizle
-          </button>
+          <button onClick={() => { setSearch(''); setStatusFilter('all'); setProjectFilter('all') }}
+            className="text-xs text-gray-400 hover:text-gray-200">Temizle</button>
         )}
         <span className="text-xs text-gray-500 ml-auto">{filtered.length} personel</span>
       </div>
 
-      {/* Personel Tablosu */}
       {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
-        </div>
+        <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}</div>
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Users}
           title={personnel.length === 0 ? 'Henüz personel yok' : 'Sonuç bulunamadı'}
-          description={
-            personnel.length === 0
-              ? 'Odoo puantaj Excel dosyasını içe aktararak personeli otomatik oluşturabilirsiniz.'
-              : 'Arama kriterlerinizi değiştirin.'
-          }
-          action={
-            personnel.length === 0 && canImport ? (
-              <Link href="/personnel/import" className="btn-primary">
-                <Upload className="h-4 w-4" />
-                Excel İçe Aktar
-              </Link>
-            ) : undefined
-          }
+          description={personnel.length === 0
+            ? 'Odoo puantaj Excel dosyasını içe aktararak personeli otomatik oluşturabilirsiniz.'
+            : 'Arama kriterlerinizi değiştirin.'}
+          action={personnel.length === 0 && canImport ? (
+            <Link href="/personnel/import" className="btn-primary">
+              <Upload className="h-4 w-4" />Excel İçe Aktar
+            </Link>
+          ) : undefined}
         />
       ) : (
         <div className="card p-0 overflow-hidden">
@@ -303,22 +241,16 @@ export default function PersonnelPage() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-100">{p.full_name}</p>
-                          <p className="text-xs text-gray-500">
-                            #{p.employee_code}
-                            {p.role_title && ` · ${p.role_title}`}
-                          </p>
+                          <p className="text-xs text-gray-500">#{p.employee_code}{p.role_title && ` · ${p.role_title}`}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-5 py-3">
                       {p.project_name ? (
                         <div className="flex items-center gap-1 text-sm text-gray-300">
-                          <MapPin className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
-                          {p.project_name}
+                          <MapPin className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />{p.project_name}
                         </div>
-                      ) : (
-                        <span className="text-sm text-gray-600">—</span>
-                      )}
+                      ) : <span className="text-sm text-gray-600">—</span>}
                     </td>
                     <td className="px-5 py-3">
                       {p.today_entry_type ? (
@@ -328,19 +260,14 @@ export default function PersonnelPage() {
                           </span>
                           {p.today_hours != null && p.today_hours > 0 && (
                             <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {p.today_hours}s
+                              <Clock className="h-3 w-3" />{p.today_hours}s
                             </p>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-600">Kayıt yok</span>
-                      )}
+                      ) : <span className="text-xs text-gray-600">Kayıt yok</span>}
                     </td>
                     <td className="px-5 py-3 max-w-[260px]">
-                      <p className="text-xs text-gray-400 truncate">
-                        {p.today_work_types || <span className="text-gray-600">—</span>}
-                      </p>
+                      <p className="text-xs text-gray-400 truncate">{p.today_work_types || '—'}</p>
                     </td>
                     <td className="px-5 py-3">
                       <span className={`badge text-xs ${STATUS_COLORS[p.status] || 'badge-gray'}`}>
@@ -348,10 +275,8 @@ export default function PersonnelPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      <Link
-                        href={`/personnel/${p.id}`}
-                        className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-surface-light transition-colors"
-                      >
+                      <Link href={`/personnel/${p.id}`}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-surface-light transition-colors">
                         <ChevronRight className="h-4 w-4" />
                       </Link>
                     </td>
@@ -363,15 +288,11 @@ export default function PersonnelPage() {
         </div>
       )}
 
-      {/* Import Geçmişi Linki */}
       {canImport && personnel.length > 0 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-500">
-            Veriler Odoo puantaj dosyasından içe aktarılmaktadır.
-          </span>
+          <span className="text-gray-500">Veriler Odoo puantaj dosyasından içe aktarılmaktadır.</span>
           <Link href="/personnel/import" className="text-wind-400 hover:text-wind-300 flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
-            Import geçmişi & yeni yükleme
+            <Calendar className="h-3.5 w-3.5" />Import geçmişi & yeni yükleme
           </Link>
         </div>
       )}
@@ -379,9 +300,7 @@ export default function PersonnelPage() {
   )
 }
 
-function KPICard({
-  label, value, color, bg,
-}: { label: string; value: number; color: string; bg: string }) {
+function KPICard({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
   return (
     <div className={`card flex items-center justify-between ${bg} border-0`}>
       <div>
