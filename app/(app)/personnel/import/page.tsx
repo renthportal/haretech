@@ -318,7 +318,7 @@ export default function PersonnelImportPage() {
 
     // 5. Personel statüslerini güncelle (bugünkü entry_type'a göre)
     const today = new Date().toISOString().split('T')[0]
-    for (const [code, pid] of personnelIds.entries()) {
+    for (const [code, pid] of Array.from(personnelIds.entries())) {
       const { data: todayEntry } = await supabase
         .from('work_entries')
         .select('entry_type, project_id')
