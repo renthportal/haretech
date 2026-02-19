@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #0A1F12;
+    --foreground: #E8F5E9;
+    --surface: #1A2A1F;
+    --surface-light: #243A2B;
+    --primary: #006838;
+    --accent: #FFC72C;
+    --success: #22C55E;
+    --danger: #EF4444;
+    --warning: #F59E0B;
+    --muted: #6B7C71;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-wind-900 text-gray-100 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-wind-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-wind-700/50 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-wind-700;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-wind-700 hover:bg-wind-600 text-white font-medium px-4 py-2.5 rounded-lg transition-colors duration-150 inline-flex items-center justify-center gap-2 min-h-[48px];
+  }
+
+  .btn-secondary {
+    @apply bg-surface-light hover:bg-surface-card text-gray-200 font-medium px-4 py-2.5 rounded-lg transition-colors duration-150 border border-wind-700/30 inline-flex items-center justify-center gap-2 min-h-[48px];
+  }
+
+  .btn-accent {
+    @apply bg-accent hover:bg-accent-dark text-wind-900 font-semibold px-4 py-2.5 rounded-lg transition-colors duration-150 inline-flex items-center justify-center gap-2 min-h-[48px];
+  }
+
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2.5 rounded-lg transition-colors duration-150 inline-flex items-center justify-center gap-2 min-h-[48px];
+  }
+
+  .btn-ghost {
+    @apply text-gray-300 hover:text-white hover:bg-surface-light font-medium px-4 py-2.5 rounded-lg transition-colors duration-150 inline-flex items-center justify-center gap-2 min-h-[48px];
+  }
+
+  .card {
+    @apply bg-surface rounded-xl border border-wind-700/20 p-5;
+  }
+
+  .card-hover {
+    @apply card hover:border-wind-700/40 transition-colors duration-150 cursor-pointer;
+  }
+
+  .input-field {
+    @apply w-full bg-wind-900/60 border border-wind-700/30 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-wind-700 focus:ring-1 focus:ring-wind-700 transition-colors min-h-[48px];
+  }
+
+  .label-text {
+    @apply block text-sm font-medium text-gray-300 mb-1.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-green {
+    @apply badge bg-green-500/20 text-green-400;
+  }
+
+  .badge-yellow {
+    @apply badge bg-yellow-500/20 text-yellow-400;
+  }
+
+  .badge-red {
+    @apply badge bg-red-500/20 text-red-400;
+  }
+
+  .badge-blue {
+    @apply badge bg-blue-500/20 text-blue-400;
+  }
+
+  .badge-gray {
+    @apply badge bg-gray-500/20 text-gray-400;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply animate-pulse bg-surface-light rounded;
+  }
+}
