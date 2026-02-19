@@ -37,14 +37,15 @@ const ENTRY_TYPE_COLORS: Record<string, string> = {
   office: 'text-blue-400 bg-blue-500/10',
 }
 
+// Supabase typed loosely to avoid join array vs object conflicts
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SupabaseRow = Record<string, any>
+type Row = Record<string, any>
 
 export default function PersonnelDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const [person, setPerson] = useState<SupabaseRow | null>(null)
-  const [entries, setEntries] = useState<SupabaseRow[]>([])
+  const [person, setPerson] = useState<Row | null>(null)
+  const [entries, setEntries] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [dateRange, setDateRange] = useState({
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -93,9 +94,15 @@ export default function PersonnelDetailPage() {
     }
   }
 
-  const stats = entries.reduce(
+  const stats = entries.reduce<{
+    totalHours: number
+    onSiteDays: number
+    standbyDays: number
+    leaveDays: number
+    workTypeHours: Record<string, number>
+  }>(
     (acc, e) => {
-      acc.totalHours += e.total_hours || 0
+      acc.totalHours += Number(e.total_hours) || 0
       if (e.entry_type === 'on_site') acc.onSiteDays++
       if (e.entry_type === 'standby') acc.standbyDays++
       if (['annual_leave', 'inter_project_leave', 'sick_leave'].includes(e.entry_type)) acc.leaveDays++
@@ -107,18 +114,19 @@ export default function PersonnelDetailPage() {
       }
       return acc
     },
-    { totalHours: 0, onSiteDays: 0, standbyDays: 0, leaveDays: 0, workTypeHours: {} as Record<string, number> }
+    { totalHours: 0, onSiteDays: 0, standbyDays: 0, leaveDays: 0, workTypeHours: {} }
   )
 
-  const topWorkTypes = Object.entries(stats.workTypeHours)
-    .sort(([, a], [, b]) => b - a)
+  const topWorkTypes: [string, number][] = Object.entries(stats.workTypeHours)
+    .map(([k, v]): [string, number] => [k, Number(v)])
+    .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
 
-  const getProjectName = (row: SupabaseRow) => {
+  const getProjectName = (row: Row): string | null => {
     const p = row?.projects
     if (!p) return null
-    if (Array.isArray(p)) return p[0]?.name || null
-    return p.name || null
+    if (Array.isArray(p)) return (p[0]?.name as string) || null
+    return (p.name as string) || null
   }
 
   const isExpiringSoon = (expiry: string) => {
@@ -148,7 +156,7 @@ export default function PersonnelDetailPage() {
         </Link>
         <div className="flex items-center gap-4 flex-1">
           <div className="h-12 w-12 rounded-full bg-wind-700/30 flex items-center justify-center text-sm font-bold text-wind-400">
-            {person.full_name.split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
+            {String(person.full_name).split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">{person.full_name}</h1>
@@ -204,7 +212,7 @@ export default function PersonnelDetailPage() {
                   <div className="h-1.5 bg-surface-light rounded-full overflow-hidden">
                     <div
                       className="h-full bg-wind-600 rounded-full"
-                      style={{ width: `${Math.min(100, (hours / (topWorkTypes[0]?.[1] || 1)) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (hours / (topWorkTypes[0][1] || 1)) * 100)}%` }}
                     />
                   </div>
                 </div>
@@ -257,12 +265,12 @@ export default function PersonnelDetailPage() {
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-mono text-gray-400">
-                          {new Date(entry.work_date + 'T00:00:00').toLocaleDateString('tr-TR', {
+                          {new Date(String(entry.work_date) + 'T00:00:00').toLocaleDateString('tr-TR', {
                             weekday: 'short', day: '2-digit', month: 'short',
                           })}
                         </span>
                         <span className={`badge text-xs ${ENTRY_TYPE_COLORS[entry.entry_type] || 'badge-gray'}`}>
-                          {ENTRY_TYPE_LABELS[entry.entry_type] || entry.entry_type}
+                          {ENTRY_TYPE_LABELS[String(entry.entry_type)] || entry.entry_type}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -272,12 +280,11 @@ export default function PersonnelDetailPage() {
                             {getProjectName(entry)}
                           </span>
                         )}
-                        {entry.total_hours != null && entry.total_hours > 0 && (
+                        {entry.total_hours != null && Number(entry.total_hours) > 0 && (
                           <span className="text-xs font-mono text-gray-400">{entry.total_hours}s</span>
                         )}
                       </div>
                     </div>
-
                     {activeLines.length > 0 && (
                       <div className="space-y-1 mt-2">
                         {activeLines.map((line) => (
@@ -292,7 +299,6 @@ export default function PersonnelDetailPage() {
                         ))}
                       </div>
                     )}
-
                     {entry.notes && (
                       <p className="text-xs text-gray-500 mt-2 italic">"{entry.notes}"</p>
                     )}
