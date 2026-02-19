@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
+  GitBranch,
+  BarChart3,
   FolderKanban,
   Truck,
   Cloud,
@@ -61,6 +63,15 @@ const navItems: NavItem[] = [
     label: 'Harita',
     href: '/map',
     icon: <Map className="h-5 w-5" />,
+  },
+  {
+    label: 'Planlama',
+    href: '/planning',
+    icon: GitBranch,
+    children: [
+      { label: 'Gantt Çizelgesi', href: '/planning' },
+      { label: 'Kaynak Çakışması', href: '/planning/conflicts' },
+    ],
   },
   {
     label: 'Raporlar',
