@@ -13,38 +13,15 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/ui/loading'
-import { formatDate } from '@/lib/utils'
 import { ENTRY_TYPE_LABELS } from '@/lib/odoo-parser'
 import toast from 'react-hot-toast'
 
-interface Personnel {
+interface WorkEntryLine {
   id: string
-  employee_code: string
-  full_name: string
-  department: string | null
-  role_title: string | null
-  phone: string | null
-  status: string
-  certifications: { name: string; expiry: string }[]
-  current_project_id: string | null
-  projects?: { name: string } | null
-}
-
-interface WorkEntry {
-  id: string
-  work_date: string
-  entry_type: string
-  total_hours: number | null
-  notes: string | null
-  odoo_project_code: string | null
-  projects?: { name: string } | null
-  work_entry_lines: {
-    id: string
-    work_type_code: string
-    work_type_label: string
-    turbine_raw: string | null
-    hours: number
-  }[]
+  work_type_code: string
+  work_type_label: string
+  turbine_raw: string | null
+  hours: number
 }
 
 const ENTRY_TYPE_COLORS: Record<string, string> = {
@@ -60,13 +37,16 @@ const ENTRY_TYPE_COLORS: Record<string, string> = {
   office: 'text-blue-400 bg-blue-500/10',
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SupabaseRow = Record<string, any>
+
 export default function PersonnelDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const [person, setPerson] = useState<Personnel | null>(null)
-  const [entries, setEntries] = useState<WorkEntry[]>([])
+  const [person, setPerson] = useState<SupabaseRow | null>(null)
+  const [entries, setEntries] = useState<SupabaseRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({
+  const [dateRange, setDateRange] = useState({
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
   })
@@ -80,17 +60,19 @@ export default function PersonnelDetailPage() {
   async function fetchData() {
     setLoading(true)
     try {
-      // Personel
       const { data: p, error: pe } = await supabase
         .from('personnel')
         .select('*, projects:current_project_id(name)')
         .eq('id', params.id as string)
         .single()
 
-      if (pe || !p) { toast.error('Personel bulunamadı'); router.push('/personnel'); return }
+      if (pe || !p) {
+        toast.error('Personel bulunamadı')
+        router.push('/personnel')
+        return
+      }
       setPerson(p)
 
-      // İş Kayıtları
       const { data: we } = await supabase
         .from('work_entries')
         .select(`
@@ -111,16 +93,14 @@ export default function PersonnelDetailPage() {
     }
   }
 
-  // Özet istatistikler
   const stats = entries.reduce(
     (acc, e) => {
       acc.totalHours += e.total_hours || 0
       if (e.entry_type === 'on_site') acc.onSiteDays++
       if (e.entry_type === 'standby') acc.standbyDays++
       if (['annual_leave', 'inter_project_leave', 'sick_leave'].includes(e.entry_type)) acc.leaveDays++
-
-      // İş tipi dağılımı
-      for (const l of e.work_entry_lines) {
+      const lines: WorkEntryLine[] = e.work_entry_lines || []
+      for (const l of lines) {
         if (l.hours > 0 && l.work_type_label && !['Proje Arası', 'İzin Günü'].includes(l.work_type_label)) {
           acc.workTypeHours[l.work_type_label] = (acc.workTypeHours[l.work_type_label] || 0) + l.hours
         }
@@ -134,9 +114,15 @@ export default function PersonnelDetailPage() {
     .sort(([, a], [, b]) => b - a)
     .slice(0, 6)
 
+  const getProjectName = (row: SupabaseRow) => {
+    const p = row?.projects
+    if (!p) return null
+    if (Array.isArray(p)) return p[0]?.name || null
+    return p.name || null
+  }
+
   const isExpiringSoon = (expiry: string) => {
-    const d = new Date(expiry)
-    const diff = (d.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+    const diff = (new Date(expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
     return diff < 90
   }
 
@@ -152,16 +138,17 @@ export default function PersonnelDetailPage() {
 
   if (!person) return null
 
+  const certifications: { name: string; expiry: string }[] = person.certifications || []
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/personnel" className="btn-ghost p-2">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <div className="flex items-center gap-4 flex-1">
           <div className="h-12 w-12 rounded-full bg-wind-700/30 flex items-center justify-center text-sm font-bold text-wind-400">
-            {person.full_name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+            {person.full_name.split(' ').map((n: string) => n[0]).slice(0, 2).join('')}
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">{person.full_name}</h1>
@@ -171,23 +158,19 @@ export default function PersonnelDetailPage() {
               {person.department && ` · ${person.department}`}
             </p>
           </div>
-          {person.projects?.name && (
+          {getProjectName(person) && (
             <div className="ml-auto flex items-center gap-1.5 text-sm text-gray-400">
               <MapPin className="h-4 w-4" />
-              {person.projects.name}
+              {getProjectName(person)}
             </div>
           )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Sol Kolon */}
         <div className="space-y-4">
-          {/* Özet İstatistikler */}
           <div className="card space-y-3">
-            <h3 className="text-sm font-semibold text-gray-200">
-              Dönem Özeti
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-200">Dönem Özeti</h3>
             <div className="flex items-center gap-2 mb-3">
               <input
                 type="date"
@@ -209,7 +192,6 @@ export default function PersonnelDetailPage() {
             <StatRow label="İzin Günü" value={`${stats.leaveDays} gün`} icon={<Calendar className="h-3.5 w-3.5" />} color="text-gray-400" />
           </div>
 
-          {/* İş Tipi Dağılımı */}
           {topWorkTypes.length > 0 && (
             <div className="card space-y-3">
               <h3 className="text-sm font-semibold text-gray-200">İş Tipi Dağılımı</h3>
@@ -230,19 +212,17 @@ export default function PersonnelDetailPage() {
             </div>
           )}
 
-          {/* Sertifikalar */}
-          {person.certifications?.length > 0 && (
+          {certifications.length > 0 && (
             <div className="card space-y-2">
               <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
                 <Award className="h-4 w-4" />
                 Sertifikalar
               </h3>
-              {person.certifications.map((cert, i) => (
+              {certifications.map((cert, i) => (
                 <div key={i} className="flex items-center justify-between">
                   <span className="text-sm text-gray-300">{cert.name}</span>
                   <span className={`text-xs font-mono ${isExpiringSoon(cert.expiry) ? 'text-red-400' : 'text-gray-500'}`}>
-                    {cert.expiry}
-                    {isExpiringSoon(cert.expiry) && ' ⚠'}
+                    {cert.expiry}{isExpiringSoon(cert.expiry) && ' ⚠'}
                   </span>
                 </div>
               ))}
@@ -250,7 +230,6 @@ export default function PersonnelDetailPage() {
           )}
         </div>
 
-        {/* Sağ Kolon — İş Kayıtları */}
         <div className="lg:col-span-2 space-y-3">
           <h3 className="text-sm font-semibold text-gray-200">
             İş Kayıtları
@@ -269,7 +248,8 @@ export default function PersonnelDetailPage() {
           ) : (
             <div className="space-y-2">
               {entries.map((entry) => {
-                const activeLines = entry.work_entry_lines.filter(
+                const lines: WorkEntryLine[] = entry.work_entry_lines || []
+                const activeLines = lines.filter(
                   (l) => l.hours > 0 && l.work_type_label && !['Proje Arası', 'İzin Günü'].includes(l.work_type_label)
                 )
                 return (
@@ -277,7 +257,7 @@ export default function PersonnelDetailPage() {
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-mono text-gray-400">
-                          {new Date(entry.work_date).toLocaleDateString('tr-TR', {
+                          {new Date(entry.work_date + 'T00:00:00').toLocaleDateString('tr-TR', {
                             weekday: 'short', day: '2-digit', month: 'short',
                           })}
                         </span>
@@ -286,21 +266,18 @@ export default function PersonnelDetailPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {entry.projects?.name && (
+                        {getProjectName(entry) && (
                           <span className="text-xs text-gray-500 flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
-                            {entry.projects.name}
+                            {getProjectName(entry)}
                           </span>
                         )}
                         {entry.total_hours != null && entry.total_hours > 0 && (
-                          <span className="text-xs font-mono text-gray-400">
-                            {entry.total_hours}s
-                          </span>
+                          <span className="text-xs font-mono text-gray-400">{entry.total_hours}s</span>
                         )}
                       </div>
                     </div>
 
-                    {/* İş Satırları */}
                     {activeLines.length > 0 && (
                       <div className="space-y-1 mt-2">
                         {activeLines.map((line) => (
@@ -332,7 +309,12 @@ export default function PersonnelDetailPage() {
 
 function StatRow({
   label, value, icon, color = 'text-gray-300',
-}: { label: string; value: string; icon: React.ReactNode; color?: string }) {
+}: {
+  label: string
+  value: string
+  icon: React.ReactNode
+  color?: string
+}) {
   return (
     <div className="flex items-center justify-between text-sm">
       <div className="flex items-center gap-2 text-gray-400">

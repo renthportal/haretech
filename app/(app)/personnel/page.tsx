@@ -124,7 +124,7 @@ export default function PersonnelPage() {
           role_title: p.role_title,
           status: p.status,
           current_project_id: p.current_project_id,
-          project_name: (p.projects as { name: string } | null)?.name ?? null,
+          project_name: (Array.isArray(p.projects) ? p.projects[0]?.name : (p.projects as { name: string } | null)?.name) ?? null,
           today_entry_type: te?.entry_type ?? null,
           today_hours: te?.total_hours ?? null,
           today_work_types: workTypes,
