@@ -29,6 +29,7 @@ interface NavItem {
   href: string
   icon: React.ReactNode
   roles?: UserRole[]
+  children?: { label: string; href: string }[]
 }
 
 const navItems: NavItem[] = [
@@ -136,6 +137,28 @@ export function Sidebar({ isOpen, onClose, userRole }: SidebarProps) {
           {filteredItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + '/')
+            if (item.children) {
+              const isGroupActive = item.children.some((c) => pathname === c.href || pathname.startsWith(c.href + '/'))
+              return (
+                <div key={item.href}>
+                  <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${isGroupActive ? 'text-wind-400' : 'text-gray-400'}`}>
+                    {item.icon}
+                    {item.label}
+                  </div>
+                  <div className="ml-4 pl-3 border-l border-wind-700/20 space-y-0.5">
+                    {item.children.map((child) => {
+                      const childActive = pathname === child.href
+                      return (
+                        <Link key={child.href} href={child.href} onClick={onClose}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${childActive ? 'bg-wind-700/20 text-wind-400' : 'text-gray-500 hover:text-gray-200 hover:bg-surface-light'}`}>
+                          {child.label}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            }
             return (
               <Link
                 key={item.href}
