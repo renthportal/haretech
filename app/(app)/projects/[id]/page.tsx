@@ -114,19 +114,25 @@ export default function ProjectDetailPage() {
     setExpanded(null)
   }
 
+  // Supabase FK join bazen array bazen obje döner - ikisini de handle et
+  const getPerson = (e: any) => {
+    const p = e.personnel
+    if (!p) return null
+    if (Array.isArray(p)) return p[0] || null
+    return p
+  }
+
   // ── Gruplama: Personel bazlı ──
   const byPerson = (() => {
     const map = new Map<string, any>()
     for (const e of allEntries) {
-      const pArr: any[] = e.personnel as any[]
-      const p = Array.isArray(pArr) ? pArr[0] : null
+      const p = getPerson(e)
       if (!p) continue
       const key = String(p.id)
       if (!map.has(key)) {
         map.set(key, {
           id: key, employee_code: p.employee_code, full_name: p.full_name,
           department: p.department, totalHours: 0, onSiteDays: 0,
-          // turbine -> { workTypeLabel -> hours }
           turbineMap: {} as Record<string, Record<string, number>>,
           entries: [] as any[],
         })
@@ -149,8 +155,7 @@ export default function ProjectDetailPage() {
   const byTurbine = (() => {
     const map = new Map<string, any>()
     for (const e of allEntries) {
-      const pArr: any[] = e.personnel as any[]
-      const p = Array.isArray(pArr) ? pArr[0] : null
+      const p = getPerson(e)
       for (const l of (e.work_entry_lines || []) as any[]) {
         if (!l.hours || !l.work_type_label || ['Proje Arası','İzin Günü'].includes(l.work_type_label)) continue
         const tKey = l.turbine_raw && l.turbine_raw !== '*' ? `T${l.turbine_raw}` : 'Genel Saha'
