@@ -67,7 +67,7 @@ const navItems: NavItem[] = [
   {
     label: 'Planlama',
     href: '/planning',
-    icon: GitBranch,
+    icon: <GitBranch className="h-5 w-5" />,
     children: [
       { label: 'Gantt Çizelgesi', href: '/planning' },
       { label: 'Kaynak Çakışması', href: '/planning/conflicts' },
