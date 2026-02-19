@@ -100,7 +100,8 @@ export default function PersonnelPage() {
         .eq('work_date', today)
 
       // Map: personnel_id → today entry
-      const todayMap = new Map<string, typeof todayEntries extends (infer T)[] ? T : never>()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const todayMap = new Map<string, any>()
       if (todayEntries) {
         for (const e of todayEntries) {
           todayMap.set(e.personnel_id, e)
